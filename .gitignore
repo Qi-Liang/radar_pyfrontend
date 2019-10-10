@@ -1,0 +1,8 @@
+.idea/
+records/
+records2/
+PortControl/__pycache__/
+PortControl/*.txt
+PortControl/*.json
+PortControl/*.cfg
+PortControl/trash
