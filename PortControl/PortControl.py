@@ -1,50 +1,3 @@
-"""
-# TLV type defination
-typedef enum MmwDemo_output_message_type_e
-{
-    /*! @brief   List of detected points */
-    MMWDEMO_OUTPUT_MSG_DETECTED_POINTS = 1,
-
-    /*! @brief   Range profile */
-    MMWDEMO_OUTPUT_MSG_RANGE_PROFILE,
-
-    /*! @brief   Noise floor profile */
-    MMWDEMO_OUTPUT_MSG_NOISE_PROFILE,
-
-    /*! @brief   Samples to calculate static azimuth  heatmap */
-    MMWDEMO_OUTPUT_MSG_AZIMUT_STATIC_HEAT_MAP,
-
-    /*! @brief   Range/Doppler detection matrix */
-    MMWDEMO_OUTPUT_MSG_RANGE_DOPPLER_HEAT_MAP,
-
-    /*! @brief   Point Cloud - Array of detected points   点云类型= 6*/
-    MMWDEMO_OUTPUT_MSG_POINT_CLOUD,
-
-    /*! @brief   Target List - Array of detected targets (position, velocity, error covariance) */
-    MMWDEMO_OUTPUT_MSG_TARGET_LIST,
-
-    /*! @brief   Target List - Array of target indices */
-    MMWDEMO_OUTPUT_MSG_TARGET_INDEX,
-
-    /*! @brief   Stats information */
-    MMWDEMO_OUTPUT_MSG_STATS,
-
-    MMWDEMO_OUTPUT_MSG_MAX,
-
-    MMWDEMO_OUTPUT_MSG_MAN_POSITION_LIST
-} MmwDemo_output_message_type;
-
-typedef struct
-{
-	float range; // 距离
-	float azimuth; // 角度(水平)
-	float elev;// 角度(仰角)
-	float doppler;// 速度
-	float snr;// 信噪比(可理解为点的强度或置信度）
-} Point;
-"""
-
-
 import os
 import os.path
 import copy
@@ -55,27 +8,80 @@ import _thread
 import threading
 import binascii
 from ctypes import *
+import matplotlib.pyplot as plt
+import math
+import datetime
+import json
+from mpl_toolkits.mplot3d import Axes3D
+
+from collections import OrderedDict
+
 
 data_port = serial.Serial()
 user_port = serial.Serial()
 data_buffer = []
 dataReceiveThread = ""
 HEADER_SIZE = 52
-SINGLE_HUMAN_DATA_SIZE = 36
-SINGLE_POINT_DATA_SIZE = 20
+
 # Process height at frontend
 POSTURES = {0: "UNKNOWN", 1: "STANCE", 2: "SITTING", 3: "LYING"}
 HEIGHT_MESURE_TIMES = 150
 CFAR_REMOVAL_THRE = 40
-HEIGHT_RANGE = 0.4
-RADAR_HEIGHT = 1.6
-NOMAL_FACTOR = 0.02
+SINGLE_HUMAN_DATA_SIZE = 36
 height_map = dict()
 count_map = dict()
 tid_set = set()
 human_data_map = dict()
 human_data = {"tid": 0, "pos_x": 0.0, "pos_y": 0.0, "pos_z": 0.0, "vel_x": 0.0, "vel_y": 0.0, "vel_z": 0.0 , "man_height": 0.0, "posture_state": 0}
+HEIGHT_RANGE = 0.4
+RADAR_HEIGHT = 1.6
+NOMAL_FACTOR = 0.02
+
+# Point data
+SINGLE_POINT_DATA_SIZE = 20
 point_data = {"range":0.0, "azimuth":0.0, "elev":0.0, "doppler":0.0, "snr":0.0}
+point_data1 = {"x":0.0, "y":0.0, "z":0.0}
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+
+
+# Calculate height by updating tidSet and maps
+def cal_height(tid, pos_z):
+    if pos_z <= 0.3 or pos_z > 2.5:
+        return
+    tid_set.add(tid)
+
+    if count_map.__contains__(tid):
+        if count_map[tid] <= HEIGHT_MESURE_TIMES:
+            count_map[tid] += 1
+            if pos_z > RADAR_HEIGHT + HEIGHT_RANGE or pos_z < RADAR_HEIGHT - HEIGHT_RANGE:
+                height_map[tid] = (1.0 - NOMAL_FACTOR) * height_map[tid] + NOMAL_FACTOR * pos_z
+            else:
+                height_map[tid] = 0.95 * height_map[tid] + 0.05 * pos_z
+    else:
+        count_map[tid] = 1
+        height_map[tid] = 0.8 * RADAR_HEIGHT + 0.2 * pos_z
+        height_map[tid] = 1.3 * height_map[tid]
+
+
+def remove_unused_tid():
+    if count_map.__len__() > 0:
+        for tid in count_map.keys():
+            if not tid_set.__contains__(tid):
+                count_map.pop(tid)
+                height_map.pop(tid)
+
+def judge_posture(height_rate):
+    posture_state = 0
+    if height_rate > 0.75:
+        posture_state = 1
+    elif height_rate > 0.35:
+        posture_state = 2
+    elif posture_state > 0.1:
+        posture_state = 3
+    return posture_state
+
 
 def open_port():
     try:
@@ -130,6 +136,10 @@ def init_board():
 
 
 def data_receive_function():
+    ponit_data_list_list = []  # 该列表用来存放点数据
+    time2 = datetime.datetime.now()
+    count = 0
+    hello = OrderedDict()
     while 1:
         if data_port is not None and data_port.isOpen():
             try:
@@ -140,23 +150,54 @@ def data_receive_function():
                         valid_data.append((buffer[i]))
                     # print(valid_data)
                     data_buffer.extend(valid_data)
-                    process_data()
+                    point_data = process_data()
+                    print(point_data)
+                    ponit_data_list_list.extend(point_data)
+                    time1 = datetime.datetime.now()
+
+                    count += 1
+                    # print(type(ponit_data_list_list))
+
+
+                    if ponit_data_list_list:
+                        print(ponit_data_list_list)
+
+
+                        hello.update({count: ponit_data_list_list})
+                        # print(ponit_data_list_list)
+                        xs, ys, zs = [], [], []
+                        hxs, hys, hzs = [], [], []
+                        for ponit_data in ponit_data_list_list:
+                            for data in ponit_data:
+                               xs.append(ponit_data['x'])
+                               ys.append(ponit_data['y'])
+                               zs.append(ponit_data['z'])
+                        for tid in tid_set:
+                            hxs.append(human_data_map[tid]['pox_x'])
+                            hys.append(human_data_map[tid]['pox_y'])
+                            hzs.append(human_data_map[tid]['pox_z'])
+
+                        print('1111',time1.second,'2222' , time2.second)
+                        if abs(time1.second - time2.second) >= 5 and xs:
+                            ax.scatter(xs, ys, zs, c = 'r', marker = 'o')
+                            ax.scatter(hxs, hys, hzs, c = 'b', marker = 'p')
+                            time2 = datetime.datetime.now()
+                            ax.set_xlabel('X Label')
+                            ax.set_ylabel('Y Label')
+                            ax.set_zlabel('Z Label')
+                            plt.pause(0.000001)
+                with open('hi.json', 'w') as f:
+                    # f.write(str(hello))
+                    json.dump(hello, f)
+
             except TimeoutError:
                 print('Time Out Error')
             except Exception as ex:
-                print(ex.__context__)
+                print("EXCEPTION:", ex.__traceback__)
+                print("EXCEPTION_detail:", ex)
         time.sleep(0.01)
 
 
-# def process_point_cloud():
-
-
-
-
-
-
-
-# Porcess human data
 def process_data():
     # Refresh tidSet
     tid_set.clear()
@@ -186,142 +227,96 @@ def process_data():
         else:
             print("TLV type: " + str(tlv_type))
         point_data_list = [point_data for i in range(point_num)]
+        point_data_list1 = [point_data1 for i in range(point_num)]
         for i in range(point_num):
-            point_data_list[i]["range"] = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            r = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            point_data_list[i]["range"] = r
             index += 8
-            point_data_list[i]["azimuth"] = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            fi = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            point_data_list[i]["azimuth"] = fi
             index += 8
-            point_data_list[i]["elev"] = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            thita= byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            point_data_list[i]["elev"] = thita
             index += 8
             point_data_list[i]["doppler"] = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
             index += 8
             point_data_list[i]["snr"] = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
             index += 8
-        # TODO: Stop printing out points.
-        print(point_data_list)
+            xs = r * math.cos(thita)* math.sin(fi)
+            ys = r * math.cos(thita)* math.cos(fi)
+            zs = r * math.sin(thita)
+            point_data_list1[i]["x"] = xs
+            point_data_list1[i]["y"] = ys
+            point_data_list1[i]["z"] = zs
 
-        # Get human clusters data
-        tlv_type = int(convert_string("".join(frame_data[index:index + 8])), 16)
-        index += 8
-        content_length = int(convert_string("".join(frame_data[index:index + 8])), 16) - 8
-        print(content_length)
-        index += 8
-        if content_length % SINGLE_HUMAN_DATA_SIZE != 0:
-            print("人数据长度错误!")
-            continue
-        human_count = content_length / SINGLE_HUMAN_DATA_SIZE
-        human_count = int(human_count)
-        print("传递聚类数：" + str(human_count))
-
-        human_data.clear()
-        for i in range(human_count):
-            # tid = int.from_bytes(bytearray(frame_data[index:index + 4]), signed=False)
-            tid = int(convert_string("".join(frame_data[index:index + 8])), 16)
+            # Get human clusters data
+            tlv_type = int(convert_string("".join(frame_data[index:index + 8])), 16)
             index += 8
-            pos_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            content_length = int(convert_string("".join(frame_data[index:index + 8])), 16) - 8
+            print(content_length)
             index += 8
-            pos_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-            index += 8
-            pos_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-            index += 8
-            vel_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-            index += 8
-            vel_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-            index += 8
-            vel_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-            index += 8
-            man_height = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-            index += 8
-            posture_state = int(convert_string("".join(frame_data[index:index + 8])), 16)
-            index += 8
-
-
-            human_data_map[tid] = human_data.copy()
-            human_data_map[tid]["tid"] = tid
-            human_data_map[tid]["pos_x"] = pos_x
-            human_data_map[tid]["pos_y"] = pos_y
-            human_data_map[tid]["pos_z"] = pos_z
-            human_data_map[tid]["vel_x"] = vel_x
-            human_data_map[tid]["vel_y"] = vel_y
-            human_data_map[tid]["vel_z"] = vel_z
-            human_data_map[tid]["man_height"] = man_height
-            human_data_map[tid]["posture_state"] = posture_state
-
-            cal_height(tid, pos_z)
-            if int(count_map.get(tid)) <= CFAR_REMOVAL_THRE:
-                human_count -= 1
+            if content_length % SINGLE_HUMAN_DATA_SIZE != 0:
+                print("人数据长度错误!")
                 continue
+            human_count = content_length / SINGLE_HUMAN_DATA_SIZE
+            human_count = int(human_count)
+            print("传递聚类数：" + str(human_count))
 
-            man_height = height_map[tid]
-            posture_state = judge_posture(float(pos_z) / man_height)
-            human_data_map[tid]["posture_state"] = posture_state
-            posture_count[POSTURES[posture_state]] += 1
-            '''
-            C#
-            Manager.instance.AddHumanMotionData(tid,new Vector3(pos_x,0,pos_y), new Vector3(vel_x,0,vel_y), man_height,
-            posture_state)
-            '''
-            # print("tid:" + str(tid))
-            # print("pos_x" + str(pos_x))
-            # print("pos_x" + str(pos_y))
-            # print("pos_x" + str(pos_z))
-            # print("pos_x" + str(vel_x))
-            # print("pos_x" + str(vel_y))
-            # print("pos_x" + str(vel_z))
-            # print("man_height" + str(man_height))
-            # print("posture_state" + str(posture_state))
-            '''
-            C#
-            Manager.instance.data_ready=true
-            '''
-        remove_unused_tid()
-        print("检测到的人数：" + str(human_count))
-        for tmp_id in count_map.keys():
-            print("| ID: " + str(tmp_id))
-            print("|- Info: Height = " + str(height_map[tmp_id]) + " Posture = " + POSTURES[human_data_map[tid]["posture_state"]])
-            print("|- Count: " + str(count_map[int(tmp_id)]))
-        print("各类姿态人数：")
-        for posture_name in POSTURES.values():
-            print("--" + posture_name + ": " + str(posture_count[posture_name]))
-        print("------------------------------")
+            human_data.clear()
+            for i in range(human_count):
+                # tid = int.from_bytes(bytearray(frame_data[index:index + 4]), signed=False)
+                tid = int(convert_string("".join(frame_data[index:index + 8])), 16)
+                index += 8
+                pos_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                pos_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                pos_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                vel_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                vel_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                vel_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                man_height = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+                index += 8
+                posture_state = int(convert_string("".join(frame_data[index:index + 8])), 16)
+                index += 8
 
+                human_data_map[tid] = human_data.copy()
+                human_data_map[tid]["tid"] = tid
+                human_data_map[tid]["pos_x"] = pos_x
+                human_data_map[tid]["pos_y"] = pos_y
+                human_data_map[tid]["pos_z"] = pos_z
+                human_data_map[tid]["vel_x"] = vel_x
+                human_data_map[tid]["vel_y"] = vel_y
+                human_data_map[tid]["vel_z"] = vel_z
+                human_data_map[tid]["man_height"] = man_height
+                human_data_map[tid]["posture_state"] = posture_state
 
-# Calculate height by updating tidSet and maps
-def cal_height(tid, pos_z):
-    if pos_z <= 0.3 or pos_z > 2.5:
-        return
-    tid_set.add(tid)
+                cal_height(tid, pos_z)
+                if int(count_map.get(tid)) <= CFAR_REMOVAL_THRE:
+                    human_count -= 1
+                    continue
 
-    if count_map.__contains__(tid):
-        if count_map[tid] <= HEIGHT_MESURE_TIMES:
-            count_map[tid] += 1
-            if pos_z > RADAR_HEIGHT + HEIGHT_RANGE or pos_z < RADAR_HEIGHT - HEIGHT_RANGE:
-                height_map[tid] = (1.0 - NOMAL_FACTOR) * height_map[tid] + NOMAL_FACTOR * pos_z
-            else:
-                height_map[tid] = 0.95 * height_map[tid] + 0.05 * pos_z
-    else:
-        count_map[tid] = 1
-        height_map[tid] = 0.8 * RADAR_HEIGHT + 0.2 * pos_z
-        height_map[tid] = 1.3 * height_map[tid]
+                man_height = height_map[tid]
+                posture_state = judge_posture(float(pos_z) / man_height)
+                human_data_map[tid]["posture_state"] = posture_state
+                posture_count[POSTURES[posture_state]] += 1
 
-
-def remove_unused_tid():
-    if count_map.__len__() > 0:
-        for tid in count_map.keys():
-            if not tid_set.__contains__(tid):
-                count_map.pop(tid)
-                height_map.pop(tid)
-
-
-def judge_posture(height_rate):
-    posture_state = 0
-    if height_rate > 0.75:
-        posture_state = 1
-    elif height_rate > 0.35:
-        posture_state = 2
-    elif posture_state > 0.1:
-        posture_state = 3
-    return posture_state
+            remove_unused_tid()
+            print("检测到的人数：" + str(human_count))
+            for tmp_id in count_map.keys():
+                print("| ID: " + str(tmp_id))
+                print("|- Info: Height = " + str(height_map[tmp_id]) + " Posture = " + POSTURES[
+                    human_data_map[tid]["posture_state"]])
+                print("|- Count: " + str(count_map[int(tmp_id)]))
+            print("各类姿态人数：")
+            for posture_name in POSTURES.values():
+                print("--" + posture_name + ": " + str(posture_count[posture_name]))
+            print("------------------------------")
+        return point_data_list1
 
 
 def get_frame():
