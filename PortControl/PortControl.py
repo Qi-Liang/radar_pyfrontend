@@ -98,7 +98,7 @@ def open_port():
         # dataReceiveThread = threading.Thread(target=data_receive_function, args=())
         # dataReceiveThread.start()
 
-        user_port.port = "COM7"  # 端口号
+        user_port.port = "COM5"  # 端口号
         user_port.baudrate = 115200  # 波特率
         user_port.bytesize = 8  # 数据位
         user_port.stopbits = 1  # 停止位
@@ -157,19 +157,15 @@ def data_receive_function():
                     # print(type(ponit_data_list_list))
 
 
-                    if ponit_data_list_list:
-                        print(ponit_data_list_list)
-
-
-                        hello.update({count: ponit_data_list_list})
+                    if point_data:
+                        hello.update({count: point_data})
                         # print(ponit_data_list_list)
                         xs, ys, zs = [], [], []
                         hxs, hys, hzs = [], [], []
-                        for ponit_data in ponit_data_list_list:
-                            for data in ponit_data:
-                               xs.append(ponit_data['x'])
-                               ys.append(ponit_data['y'])
-                               zs.append(ponit_data['z'])
+                        for data in point_data:
+                           xs.append(data['x'])
+                           ys.append(data['y'])
+                           zs.append(data['z'])
                         for tid in tid_set:
                             hxs.append(human_data_map[tid]['pos_x'])
                             hys.append(human_data_map[tid]['pos_y'])
@@ -187,7 +183,7 @@ def data_receive_function():
                             ax.set_ylabel('Y Label')
                             ax.set_zlabel('Z Label')
                             plt.show()
-                            plt.pause(0.001)
+                            plt.pause(0.01)
                             plt.close()
                 with open('hi.json', 'w') as f:
                     # f.write(str(hello))
