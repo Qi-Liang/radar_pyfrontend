@@ -41,8 +41,6 @@ NOMAL_FACTOR = 0.02
 SINGLE_POINT_DATA_SIZE = 20
 point_data = {"range":0.0, "azimuth":0.0, "elev":0.0, "doppler":0.0, "snr":0.0}
 point_data1 = {"x":0.0, "y":0.0, "z":0.0}
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
 
 
 
@@ -100,7 +98,7 @@ def open_port():
         # dataReceiveThread = threading.Thread(target=data_receive_function, args=())
         # dataReceiveThread.start()
 
-        user_port.port = "COM5"  # 端口号
+        user_port.port = "COM7"  # 端口号
         user_port.baudrate = 115200  # 波特率
         user_port.bytesize = 8  # 数据位
         user_port.stopbits = 1  # 停止位
@@ -173,19 +171,24 @@ def data_receive_function():
                                ys.append(ponit_data['y'])
                                zs.append(ponit_data['z'])
                         for tid in tid_set:
-                            hxs.append(human_data_map[tid]['pox_x'])
-                            hys.append(human_data_map[tid]['pox_y'])
-                            hzs.append(human_data_map[tid]['pox_z'])
+                            hxs.append(human_data_map[tid]['pos_x'])
+                            hys.append(human_data_map[tid]['pos_y'])
+                            hzs.append(human_data_map[tid]['pos_z'])
 
                         print('1111',time1.second,'2222' , time2.second)
-                        if abs(time1.second - time2.second) >= 5 and xs:
+                        if xs:
+                            fig = plt.figure()
+                            ax = fig.add_subplot(111, projection='3d')
                             ax.scatter(xs, ys, zs, c = 'r', marker = 'o')
-                            ax.scatter(hxs, hys, hzs, c = 'b', marker = 'p')
+                            ax.scatter(hxs, hys, hzs, c = 'b', marker = 'p', linewidths=25)
                             time2 = datetime.datetime.now()
-                            ax.set_xlabel('X Label')
+
+                            ax.set_xlabel('X Label' + ' Frame' + str(count))
                             ax.set_ylabel('Y Label')
                             ax.set_zlabel('Z Label')
-                            plt.pause(0.000001)
+                            plt.show()
+                            plt.pause(0.001)
+                            plt.close()
                 with open('hi.json', 'w') as f:
                     # f.write(str(hello))
                     json.dump(hello, f)
@@ -226,8 +229,8 @@ def process_data():
             print("Point cloud: Exists " + str(point_num) + " points")
         else:
             print("TLV type: " + str(tlv_type))
-        point_data_list = [point_data for i in range(point_num)]
-        point_data_list1 = [point_data1 for i in range(point_num)]
+        point_data_list = [copy.deepcopy(point_data) for i in range(point_num)]
+        point_data_list1 = [copy.deepcopy(point_data1) for i in range(point_num)]
         for i in range(point_num):
             r = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
             point_data_list[i]["range"] = r
@@ -248,75 +251,78 @@ def process_data():
             point_data_list1[i]["x"] = xs
             point_data_list1[i]["y"] = ys
             point_data_list1[i]["z"] = zs
+        # Get human clusters
+        if index == len(frame_data):
+            return point_data_list1
+        else:
+            print("检测到人")
+        tlv_type = int(convert_string("".join(frame_data[index:index + 8])), 16)
+        index += 8
+        content_length = int(convert_string("".join(frame_data[index:index + 8])), 16) - 8
+        print(content_length)
+        index += 8
+        if content_length % SINGLE_HUMAN_DATA_SIZE != 0:
+            print("人数据长度错误!")
+            continue
+        human_count = content_length / SINGLE_HUMAN_DATA_SIZE
+        human_count = int(human_count)
+        print("传递聚类数：" + str(human_count))
 
-            # Get human clusters data
-            tlv_type = int(convert_string("".join(frame_data[index:index + 8])), 16)
+        human_data.clear()
+        for i in range(human_count):
+            # tid = int.from_bytes(bytearray(frame_data[index:index + 4]), signed=False)
+            tid = int(convert_string("".join(frame_data[index:index + 8])), 16)
             index += 8
-            content_length = int(convert_string("".join(frame_data[index:index + 8])), 16) - 8
-            print(content_length)
+            pos_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
             index += 8
-            if content_length % SINGLE_HUMAN_DATA_SIZE != 0:
-                print("人数据长度错误!")
+            pos_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            index += 8
+            pos_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            index += 8
+            vel_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            index += 8
+            vel_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            index += 8
+            vel_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            index += 8
+            man_height = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
+            index += 8
+            posture_state = int(convert_string("".join(frame_data[index:index + 8])), 16)
+            index += 8
+
+            human_data_map[tid] = human_data.copy()
+            human_data_map[tid]["tid"] = tid
+            human_data_map[tid]["pos_x"] = pos_x
+            human_data_map[tid]["pos_y"] = pos_y
+            human_data_map[tid]["pos_z"] = pos_z
+            human_data_map[tid]["vel_x"] = vel_x
+            human_data_map[tid]["vel_y"] = vel_y
+            human_data_map[tid]["vel_z"] = vel_z
+            human_data_map[tid]["man_height"] = man_height
+            human_data_map[tid]["posture_state"] = posture_state
+
+            cal_height(tid, pos_z)
+            if int(count_map.get(tid)) <= CFAR_REMOVAL_THRE:
+                human_count -= 1
                 continue
-            human_count = content_length / SINGLE_HUMAN_DATA_SIZE
-            human_count = int(human_count)
-            print("传递聚类数：" + str(human_count))
 
-            human_data.clear()
-            for i in range(human_count):
-                # tid = int.from_bytes(bytearray(frame_data[index:index + 4]), signed=False)
-                tid = int(convert_string("".join(frame_data[index:index + 8])), 16)
-                index += 8
-                pos_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                pos_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                pos_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                vel_x = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                vel_y = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                vel_z = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                man_height = byte_to_float(convert_string("".join(frame_data[index:index + 8])))
-                index += 8
-                posture_state = int(convert_string("".join(frame_data[index:index + 8])), 16)
-                index += 8
+            man_height = height_map[tid]
+            posture_state = judge_posture(float(pos_z) / man_height)
+            human_data_map[tid]["posture_state"] = posture_state
+            posture_count[POSTURES[posture_state]] += 1
 
-                human_data_map[tid] = human_data.copy()
-                human_data_map[tid]["tid"] = tid
-                human_data_map[tid]["pos_x"] = pos_x
-                human_data_map[tid]["pos_y"] = pos_y
-                human_data_map[tid]["pos_z"] = pos_z
-                human_data_map[tid]["vel_x"] = vel_x
-                human_data_map[tid]["vel_y"] = vel_y
-                human_data_map[tid]["vel_z"] = vel_z
-                human_data_map[tid]["man_height"] = man_height
-                human_data_map[tid]["posture_state"] = posture_state
-
-                cal_height(tid, pos_z)
-                if int(count_map.get(tid)) <= CFAR_REMOVAL_THRE:
-                    human_count -= 1
-                    continue
-
-                man_height = height_map[tid]
-                posture_state = judge_posture(float(pos_z) / man_height)
-                human_data_map[tid]["posture_state"] = posture_state
-                posture_count[POSTURES[posture_state]] += 1
-
-            remove_unused_tid()
-            print("检测到的人数：" + str(human_count))
-            for tmp_id in count_map.keys():
-                print("| ID: " + str(tmp_id))
-                print("|- Info: Height = " + str(height_map[tmp_id]) + " Posture = " + POSTURES[
-                    human_data_map[tid]["posture_state"]])
-                print("|- Count: " + str(count_map[int(tmp_id)]))
-            print("各类姿态人数：")
-            for posture_name in POSTURES.values():
-                print("--" + posture_name + ": " + str(posture_count[posture_name]))
-            print("------------------------------")
-        return point_data_list1
+        remove_unused_tid()
+        print("检测到的人数：" + str(human_count))
+        for tmp_id in count_map.keys():
+            print("| ID: " + str(tmp_id))
+            print("|- Info: Height = " + str(height_map[tmp_id]) + " Posture = " + POSTURES[
+                human_data_map[tid]["posture_state"]])
+            print("|- Count: " + str(count_map[int(tmp_id)]))
+        print("各类姿态人数：")
+        for posture_name in POSTURES.values():
+            print("--" + posture_name + ": " + str(posture_count[posture_name]))
+        print("------------------------------")
+    return point_data_list1
 
 
 def get_frame():
