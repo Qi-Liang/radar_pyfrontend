@@ -16,6 +16,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from collections import OrderedDict
 
+fig = plt.figure()
 
 data_port = serial.Serial()
 user_port = serial.Serial()
@@ -137,7 +138,9 @@ def data_receive_function():
     ponit_data_list_list = []  # 该列表用来存放点数据
     time2 = datetime.datetime.now()
     count = 0
-    hello = OrderedDict()
+    pointCloudJson = OrderedDict()
+    humanJson = OrderedDict()
+
     while 1:
         if data_port is not None and data_port.isOpen():
             try:
@@ -158,9 +161,11 @@ def data_receive_function():
 
 
                     if point_data:
-                        hello.update({count: point_data})
-                        # print(ponit_data_list_list)
-                        xs, ys, zs = [], [], []
+                        # Update point cloud file
+                        pointCloudJson.update({count: point_data})
+                        humanJson.update({count: human_data_map})
+                        # Set initial two point to fix the border.
+                        xs, ys, zs = [5, -5], [0, 10], [5, -5]
                         hxs, hys, hzs = [], [], []
                         for data in point_data:
                            xs.append(data['x'])
@@ -173,22 +178,32 @@ def data_receive_function():
 
                         print('1111',time1.second,'2222' , time2.second)
                         if xs:
-                            fig = plt.figure()
-                            ax = fig.add_subplot(111, projection='3d')
+                            plt.clf()
+                            plt.subplots_adjust(wspace=0.75, hspace=0)
+                            # 3D view
+                            ax = fig.add_subplot(221, projection='3d')
                             ax.scatter(xs, ys, zs, c = 'r', marker = 'o')
-                            ax.scatter(hxs, hys, hzs, c = 'b', marker = 'p', linewidths=25)
+                            ax.scatter(hxs, hys, hzs, c = 'b', marker = 'o', linewidths=25)
+                            ax.set_xlabel('X Label' + ' Frame' + str(count))
+                            ax.set_ylabel('Y Label' + ' Human num: ' + str(tid_set.__len__()))
+                            ax.set_zlabel('Z Label')
+                            # 2D view
+                            ax_2D = fig.add_subplot(222)
+                            ax_2D.scatter(xs, ys, c = 'r', marker = 'o')
+                            ax_2D.scatter(hxs, hys, c = 'b', marker = 'o', linewidths=25)
+                            ax_2D.set_xlabel('X Label' + ' Frame' + str(count))
+                            ax_2D.set_ylabel('Y Label' + ' Human num: ' + str(tid_set.__len__()))
+
+                            plt.pause(0.0001)
                             time2 = datetime.datetime.now()
 
-                            ax.set_xlabel('X Label' + ' Frame' + str(count))
-                            ax.set_ylabel('Y Label')
-                            ax.set_zlabel('Z Label')
-                            plt.show()
-                            plt.pause(0.01)
-                            plt.close()
-                with open('hi.json', 'w') as f:
-                    # f.write(str(hello))
-                    json.dump(hello, f)
+                # Store points and human info in json file
+                with open('../Data/PointCloud.json', 'w') as f:
+                    # f.write(str(pointCloudJson))
+                    json.dump(pointCloudJson, f)
 
+                with open('../Data/HumanInfo.json', 'w') as f:
+                    json.dump(humanJson, f)
             except TimeoutError:
                 print('Time Out Error')
             except Exception as ex:
@@ -200,9 +215,10 @@ def data_receive_function():
 def process_data():
     # Refresh tidSet
     tid_set.clear()
-    posture_count = {x: 0 for x in POSTURES.values()}
 
     while len(data_buffer) >= HEADER_SIZE:
+        posture_count = {x: 0 for x in POSTURES.values()}
+
         frame_data = get_frame()
         if frame_data is None:
             return
