@@ -43,6 +43,11 @@ SINGLE_POINT_DATA_SIZE = 20
 point_data = {"range":0.0, "azimuth":0.0, "elev":0.0, "doppler":0.0, "snr":0.0}
 point_data1 = {"x":0.0, "y":0.0, "z":0.0}
 
+time_start_flag = False
+time_end_flag = False
+time_start = 0
+time_end = 0
+
 
 
 # Calculate height by updating tidSet and maps
@@ -120,12 +125,19 @@ def open_port():
 
 
 def init_board():
+    global time_start
+    global time_start_flag
     current_dir = os.path.dirname(__file__)
     file = open(current_dir + "/mmw_pplcount_demo_default.cfg", "r+")
     if file is None:
         print("配置文件不存在!")
         return
     for text in file.readlines():
+
+        if text == "sensorStart":
+            if time_start_flag is False:
+                time_start = time.time()
+                time_start_flag = True
         print("send config:" + text)
 
         user_port.write(text.encode('utf-8'))
@@ -165,7 +177,7 @@ def data_receive_function():
                         pointCloudJson.update({count: point_data})
                         humanJson.update({count: human_data_map})
                         # Set initial two point to fix the border.
-                        xs, ys, zs = [5, -5], [0, 10], [5, -5]
+                        xs, ys, zs = [5, -5], [0, 6], [5, -5]
                         hxs, hys, hzs = [], [], []
                         for data in point_data:
                            xs.append(data['x'])
@@ -194,7 +206,7 @@ def data_receive_function():
                             ax_2D.set_xlabel('X Label' + ' Frame' + str(count))
                             ax_2D.set_ylabel('Y Label' + ' Human num: ' + str(tid_set.__len__()))
 
-                            plt.pause(0.0001)
+                            plt.pause(0.00000000001)
                             time2 = datetime.datetime.now()
 
                 # Store points and human info in json file
@@ -215,6 +227,9 @@ def data_receive_function():
 def process_data():
     # Refresh tidSet
     tid_set.clear()
+    global time_end
+    global time_start
+    global time_end_flag
 
     while len(data_buffer) >= HEADER_SIZE:
         posture_count = {x: 0 for x in POSTURES.values()}
@@ -237,6 +252,11 @@ def process_data():
         point_cloud_len = int(convert_string("".join(frame_data[index:index + 8])), 16)
         index += 8
         point_num = int(point_cloud_len / SINGLE_POINT_DATA_SIZE)
+
+        with open('time_lab.txt', 'a+') as f:
+            f.write(str(time.time()) + " ===> " + str(point_num) + "\n")
+
+
         if tlv_type == 6:
             print("Point cloud: Exists " + str(point_num) + " points")
         else:
@@ -267,6 +287,12 @@ def process_data():
         if index == len(frame_data):
             return point_data_list1
         else:
+            if time_end_flag is False:
+                time_end = time.time()
+                time_end_flag = True
+                time_duration = time_end-time_start
+                with open('time_lab.txt', 'a+') as f:
+                    f.write("Time of human being detected : " + str(time_duration) + "\n")
             print("检测到人")
         tlv_type = int(convert_string("".join(frame_data[index:index + 8])), 16)
         index += 8

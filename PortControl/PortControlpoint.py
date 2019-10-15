@@ -75,6 +75,7 @@ def init_board():
         print("配置文件不存在!")
         return
     for text in file.readlines():
+
         print("send config:" + text)
 
         user_port.write(text.encode('utf-8'))
