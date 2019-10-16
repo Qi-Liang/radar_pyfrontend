@@ -11,8 +11,9 @@ from ctypes import *
 import math
 import datetime
 import json
-
 from collections import OrderedDict
+
+from GuiTest.FrameShow import *
 
 data_port = serial.Serial()
 user_port = serial.Serial()
@@ -171,22 +172,18 @@ def data_receive_function():
                         xs, ys, zs = [5, -5], [0, 6], [5, -5]
                         hxs, hys, hzs = [], [], []
                         for data in point_data:
-                           xs.append(data['x'])
-                           ys.append(data['y'])
-                           zs.append(data['z'])
+                            xs.append(data['x'])
+                            ys.append(data['y'])
+                            zs.append(data['z'])
                         for tid in tid_set:
                             hxs.append(human_data_map[tid]['pos_x'])
                             hys.append(human_data_map[tid]['pos_y'])
                             hzs.append(human_data_map[tid]['pos_z'])
 
                         # TODO: Use pyqtgraph to show points in real time
-
-
-
-
-
-
-
+                        window.x_data = xs
+                        window.y_data = ys
+                        window.z_data = zs
 
 
                 # Store points and human info in json file
@@ -396,3 +393,11 @@ def byte_to_float(s):
 
 if __name__ == '__main__':
     open_port()
+    app = QApplication(sys.argv)
+    window = window()
+    timer = QTimer()
+    timer.timeout.connect(window.update_data)
+    timer.start(50)
+    window.show()
+    sys.exit(app.exec_())
+
