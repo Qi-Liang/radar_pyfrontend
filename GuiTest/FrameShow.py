@@ -58,13 +58,23 @@ class Window(QWidget):
         y = gl.GLGridItem()
         z = gl.GLGridItem()
 
-        x.rotate(90, 0, 1, 0)
-        y.rotate(90, 1, 0, 0)
+        # x.rotate(90, 0, 1, 0)
+        # y.rotate(90, 1, 0, 0)
 
-        x.scale(0.2, 0.1, 0.1)
-        y.scale(0.2, 0.1, 0.1)
-        z.scale(0.1, 0.2, 0.1)
+        # x.scale(0.2, 0.1, 0.1)
+        # y.scale(0.2, 0.1, 0.1)
+        # z.scale(0.1, 0.2, 0.1)
 
+        self.pos = np.empty((3, 3))
+        size = np.empty((3))
+        color = np.empty((3, 4))
+        self.pos[0] = (3, 0, 0); size[0] = 0.5; color[0] = (1.0, 0.0, 0.0, 0.2)
+        self.pos[1] = (0, 3, 0); size[1] = 1; color[1] = (0.0, 0.0, 1.0, 0.5)
+        self.pos[2] = (0, 0, 3); size[2] = 2; color[2] = (0.0, 1.0, 0.0, 1)
+
+        self.scater_plt_3d = gl.GLScatterPlotItem(pos=self.pos, size=size, color=color, pxMode=False)
+
+        self.plt_3d.addItem(self.scater_plt_3d)
         self.plt_3d.addItem(x)
         self.plt_3d.addItem(y)
         self.plt_3d.addItem(z)
@@ -72,17 +82,24 @@ class Window(QWidget):
         self.plt_3d.show()
 
 
+    def update_data(self):
+
+        self.pos[2][0] += 1
+        self.scater_plt_3d.setData(pos=self.pos)
 
 
 
 
 
-
-
+from PyQt5.QtCore import QTimer
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
     window = Window()
     window.show()
+    t = QTimer()
+    t.timeout.connect(window.update_data)
+    t.start(50)
+
 
     sys.exit(app.exec_())
