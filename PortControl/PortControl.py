@@ -8,15 +8,11 @@ import _thread
 import threading
 import binascii
 from ctypes import *
-import matplotlib.pyplot as plt
 import math
 import datetime
 import json
-from mpl_toolkits.mplot3d import Axes3D
 
 from collections import OrderedDict
-
-fig = plt.figure()
 
 data_port = serial.Serial()
 user_port = serial.Serial()
@@ -148,7 +144,6 @@ def init_board():
 
 def data_receive_function():
     ponit_data_list_list = []  # 该列表用来存放点数据
-    time2 = datetime.datetime.now()
     count = 0
     pointCloudJson = OrderedDict()
     humanJson = OrderedDict()
@@ -166,11 +161,7 @@ def data_receive_function():
                     point_data = process_data()
                     print(point_data)
                     ponit_data_list_list.extend(point_data)
-                    time1 = datetime.datetime.now()
-
                     count += 1
-                    # print(type(ponit_data_list_list))
-
 
                     if point_data:
                         # Update point cloud file
@@ -188,26 +179,15 @@ def data_receive_function():
                             hys.append(human_data_map[tid]['pos_y'])
                             hzs.append(human_data_map[tid]['pos_z'])
 
-                        print('1111',time1.second,'2222' , time2.second)
-                        if xs:
-                            plt.clf()
-                            plt.subplots_adjust(wspace=0.75, hspace=0)
-                            # 3D view
-                            ax = fig.add_subplot(221, projection='3d')
-                            ax.scatter(xs, ys, zs, c = 'r', marker = 'o')
-                            ax.scatter(hxs, hys, hzs, c = 'b', marker = 'o', linewidths=25)
-                            ax.set_xlabel('X Label' + ' Frame' + str(count))
-                            ax.set_ylabel('Y Label' + ' Human num: ' + str(tid_set.__len__()))
-                            ax.set_zlabel('Z Label')
-                            # 2D view
-                            ax_2D = fig.add_subplot(222)
-                            ax_2D.scatter(xs, ys, c = 'r', marker = 'o')
-                            ax_2D.scatter(hxs, hys, c = 'b', marker = 'o', linewidths=25)
-                            ax_2D.set_xlabel('X Label' + ' Frame' + str(count))
-                            ax_2D.set_ylabel('Y Label' + ' Human num: ' + str(tid_set.__len__()))
+                        # TODO: Use pyqtgraph to show points in real time
 
-                            plt.pause(0.00000000001)
-                            time2 = datetime.datetime.now()
+
+
+
+
+
+
+
 
                 # Store points and human info in json file
                 with open('../Data/PointCloud.json', 'w') as f:
